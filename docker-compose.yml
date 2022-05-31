@@ -1,0 +1,134 @@
+version: "3.8"
+
+services:
+
+  # https://hub.docker.com/_/mysql
+  otel-provider1-db:
+    image: "mysql:5.7"
+    ports:
+      - "3306:3306"
+    restart: "always"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_ROOT_USER: "root"
+      MYSQL_ROOT_PASSWORD: ""
+      MYSQL_USER: "provider1"
+      MYSQL_PASSWORD: "p@ssw0rd"
+      MYSQL_DATABASE: "provider1"
+    volumes:
+      - "./provider1/dbdata:/var/lib/mysql"
+      - "./provider1/scripts/init-db.sql:/data/application/init-db.sql"
+    command: [
+      "--default-authentication-plugin=mysql_native_password",
+      "--init-file=/data/application/init-db.sql"
+    ]
+
+  # https://hub.docker.com/_/mysql
+  otel-provider2-db:
+    image: "mysql:5.7"
+    ports:
+      - "3307:3306"
+    restart: "always"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_ROOT_USER: "root"
+      MYSQL_ROOT_PASSWORD: ""
+      MYSQL_USER: "provider2"
+      MYSQL_PASSWORD: "p@ssw0rd"
+      MYSQL_DATABASE: "provider2"
+    volumes:
+      - "./provider2/dbdata:/var/lib/mysql"
+      - "./provider2/scripts/init-db.sql:/data/application/init-db.sql"
+    command: [
+      "--default-authentication-plugin=mysql_native_password",
+      "--init-file=/data/application/init-db.sql"
+    ]
+
+  otel-provider1:
+    image: "otel-provider1:latest"
+    ports:
+      - "8082:8080"
+    volumes:
+      - "./provider1/config/application.yml:/config/application.yml"
+
+  otel-provider2:
+    image: "otel-provider2:latest"
+    ports:
+      - "8083:8080"
+    volumes:
+      - "./provider2/config/application.yml:/config/application.yml"
+
+  otel-api:
+    image: "otel-api:latest"
+    ports:
+      - "8081:8080"
+    volumes:
+      - "./api/config/application.yml:/config/application.yml"
+
+  otel-ui:
+    image: "otel-ui:latest"
+    ports:
+      - "8080:8080"
+    volumes:
+      - "./ui/config/application.yml:/config/application.yml"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.4.2
+    container_name: elasticsearch
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --silent --fail localhost:9200/_cluster/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+  oap:
+    image: skywalking/oap:latest
+    container_name: oap
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    links:
+      - elasticsearch
+    ports:
+      - "11800:11800"
+      - "12800:12800"
+    healthcheck:
+      test: [ "CMD-SHELL", "/skywalking/bin/swctl ch" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      SW_STORAGE: elasticsearch
+      SW_STORAGE_ES_CLUSTER_NODES: elasticsearch:9200
+      SW_HEALTH_CHECKER: default
+      SW_TELEMETRY: prometheus
+      JAVA_OPTS: "-Xms2048m -Xmx2048m"
+
+  ui:
+    image: skywalking/ui:latest
+    container_name: ui
+    depends_on:
+      oap:
+        condition: service_healthy
+    links:
+      - oap
+    ports:
+      - "18080:8080"
+    environment:
+      SW_OAP_ADDRESS: http://oap:12800
+
+
+
+

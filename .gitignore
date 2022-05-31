@@ -1,0 +1,15 @@
+dbdata
+tmp
+
+# Maven
+target
+
+# Eclipse, VSCode
+.classpath
+.factorypath
+.project
+.settings
+
+# IntelliJ IDEA
+.idea
+*.iml
